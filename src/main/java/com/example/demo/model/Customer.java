@@ -15,7 +15,7 @@ import org.hibernate.annotations.Where;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name="Customer",indexes = {
+@Table(name="customer",indexes = {
         @Index(name = "idx_customer_email", columnList = "email", unique = true),
         @Index(name = "idx_customer_phone", columnList = "phone")
 }

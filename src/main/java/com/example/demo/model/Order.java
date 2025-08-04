@@ -11,7 +11,6 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 @Entity
@@ -64,7 +63,7 @@ public class Order {
 
     @NotBlank(message = "{validation.order.shippingAddress.mandatory}")
     @Size(max = 255, message = "{validation.order.shippingAddress.size}")
-    @Column(name = "shipping_address", nullable = false, length = 255)
+    @Column(name = "shipping_address", nullable = false)
     private String shippingAddress;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -97,10 +96,6 @@ public class Order {
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
         calculateTotalAmount();
-    }
-
-    public List<OrderItem> getOrderItems() {
-        return Collections.unmodifiableList(orderItems);
     }
 
     public void addOrderItem(OrderItem item) {
