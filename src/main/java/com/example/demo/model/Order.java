@@ -1,152 +1,100 @@
 package com.example.demo.model;
 
 import jakarta.persistence.*;
-import jakarta.validation.constraints.*;
+
 import lombok.*;
-import org.hibernate.annotations.CacheConcurrencyStrategy;
-import org.hibernate.annotations.SQLDelete;
-import org.hibernate.annotations.Where;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
+
 
 @Entity
 @Table(name = "orders", indexes = {
         @Index(name = "idx_order_customer", columnList = "customer_id"),
-        @Index(name = "idx_order_status", columnList = "status"),
-        @Index(name = "idx_order_date", columnList = "order_date")
+        @Index(name = "idx_order_status_date", columnList = "status,orderDate"),
+        @Index(name = "idx_order_total", columnList = "totalAmount")
 })
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@ToString(exclude = "orderItems")
-@SQLDelete(sql = "UPDATE orders SET deleted = true WHERE id=?")
-@Where(clause = "deleted = false")
-@Cacheable
-@org.hibernate.annotations.Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
-
 
 public class Order {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(updatable = false, nullable = false)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id", nullable = false)
-    @NotNull(message = "{validation.order.customer.mandatory}")
     private Customer customer;
 
-    @NotNull(message = "{validation.order.date.mandatory}")
-    @Column(name = "order_date", nullable = false)
-    private LocalDateTime orderDate;
+    @Column(nullable = false, updatable = false)
+    private LocalDateTime orderDate = LocalDateTime.now();
 
-    @NotNull(message = "{validation.order.status.mandatory}")
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private OrderStatus status;
+    private OrderStatus status = OrderStatus.PENDING;
 
-    @PositiveOrZero(message = "{validation.order.total.positive}")
-    @Column(nullable = false, precision = 19, scale = 2)
-    @Builder.Default
-    private BigDecimal totalAmount = BigDecimal.ZERO;
+    @Column(nullable = false, columnDefinition = "DECIMAL(12,2)")
+    private BigDecimal totalAmount;
 
-    @Size(max = 500, message = "{validation.order.notes.size}")
-    @Column(length = 500)
-    private String notes;
+    @Column(columnDefinition = "DECIMAL(12,2)")
+    private BigDecimal taxAmount;
 
-    @NotBlank(message = "{validation.order.shippingAddress.mandatory}")
-    @Size(max = 255, message = "{validation.order.shippingAddress.size}")
-    @Column(name = "shipping_address", nullable = false)
-    private String shippingAddress;
+    @Column(columnDefinition = "DECIMAL(12,2)")
+    private BigDecimal discountAmount;
+
+    @Column(length = 50)
+    private String paymentMethod;
+
+    @Column(length = 100)
+    private String shippingMethod;
+
+    @Column(length = 100)
+    private String trackingNumber;
 
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
-    private List<OrderItem> orderItems = new ArrayList<>();
+    private Set<OrderItem> items = new HashSet<>();
 
+    @CreatedDate
     @Column(updatable = false)
     private LocalDateTime createdAt;
 
-    @Column
+    @LastModifiedDate
     private LocalDateTime updatedAt;
 
-    @Column
-    @Builder.Default
-    private boolean deleted = false;
+    // Helper methods
+    public void addItem(OrderItem item) {
+        items.add(item);
+        item.setOrder(this);
+        calculateTotals();
+    }
 
-    @Version
-    private Long version;
+    public void removeItem(OrderItem item) {
+        items.remove(item);
+        item.setOrder(null);
+        calculateTotals();
+    }
 
     @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
-        if (orderDate == null) {
-            orderDate = LocalDateTime.now();
-        }
-        calculateTotalAmount();
-    }
-
     @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
-        calculateTotalAmount();
-    }
+    private void calculateTotals() {
+        this.totalAmount = items.stream()
+                .map(OrderItem::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-    public void addOrderItem(OrderItem item) {
-        if (item == null) {
-            throw new IllegalArgumentException("Order item cannot be null");
-        }
-        orderItems.add(item);
-        item.setOrder(this);
-        calculateTotalAmount();
-    }
-
-    public void removeOrderItem(OrderItem item) {
-        if (item == null) {
-            throw new IllegalArgumentException("Order item cannot be null");
-        }
-        if (orderItems.remove(item)) {
-            item.setOrder(null);
-            calculateTotalAmount();
-        }
-    }
-
-    public void calculateTotalAmount() {
-        this.totalAmount = orderItems.stream()
-                .map(item -> item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
-    }
-
-    public void setStatus(OrderStatus newStatus) {
-        if (this.status == OrderStatus.CANCELLED && newStatus != OrderStatus.CANCELLED) {
-            throw new IllegalStateException("Cannot change status from CANCELLED");
-        }
-        this.status = newStatus;
+        // Apply tax/discount calculations if needed
+        // this.taxAmount = totalAmount.multiply(taxRate);
+        // this.discountAmount = ...
     }
 
     public enum OrderStatus {
-        PENDING("Pending"),
-        PROCESSING("Processing"),
-        SHIPPED("Shipped"),
-        DELIVERED("Delivered"),
-        CANCELLED("Cancelled"),
-        RETURNED("Returned");
-
-        private final String displayName;
-
-        OrderStatus(String displayName) {
-            this.displayName = displayName;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
+        PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED, RETURNED, REFUNDED
     }
 }

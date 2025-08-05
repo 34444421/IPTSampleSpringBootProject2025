@@ -2,77 +2,92 @@ package com.example.demo.model;
 
 
 import jakarta.persistence.*;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
+
 import lombok.*;
-import org.hibernate.annotations.CacheConcurrencyStrategy;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
 
-import org.hibernate.annotations.SQLDelete;
-import org.hibernate.annotations.Where;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
-@Table(name="customer",indexes = {
+@Table(name = "customer", indexes = {
         @Index(name = "idx_customer_email", columnList = "email", unique = true),
-        @Index(name = "idx_customer_phone", columnList = "phone")
-}
-)
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
+        @Index(name = "idx_customer_phone", columnList = "phone", unique = true),
+        @Index(name = "idx_customer_code", columnList = "customerCode", unique = true),
+        @Index(name = "idx_customer_active", columnList = "active"),
+        @Index(name = "idx_customer_name", columnList = "lastName,firstName"),
+        @Index(name = "idx_customer_created", columnList = "createdAt")
+})
+@Getter @Setter
+@NoArgsConstructor @AllArgsConstructor
 @Builder
-@ToString(exclude = {"password", "address"})
-@SQLDelete(sql = "UPDATE customers SET deleted = true WHERE id=?")
-@Where(clause = "deleted = false")
-@Cacheable
-@org.hibernate.annotations.Cache(usage = CacheConcurrencyStrategy.READ_WRITE)
 public class Customer {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(updatable = false, nullable = false)
     private Long id;
 
-    @NotBlank(message = "{validation.customer.name.mandatory}")
-    @Size(max = 100, message = "{validation.customer.name.size}")
-    @Column(nullable = false, length = 100)
-    private String name;
+    @Column(nullable = false, unique = true)
+    private String customerCode;
 
-    @Email(message = "{validation.customer.email.invalid}")
+    @Column(nullable = false)
+    private String firstName;
+
+    @Column(nullable = false)
+    private String lastName;
+
     @Column(nullable = false, unique = true)
     private String email;
 
-    @Column(nullable = false, length = 60) // BCrypt hash length
-    private String password;
-
-    @Size(max = 20, message = "{validation.customer.phone.size}")
-    @Column(length = 20)
+    @Column(nullable = false, unique = true)
     private String phone;
 
     @Embedded
-    @Valid // Ensures Address validations are checked
     private Address address;
 
+    @Column(nullable = false)
+    private boolean active = true;
+
+    // Correct monetary field using BigDecimal
+    @Column(columnDefinition = "DECIMAL(12,2)")
+    private BigDecimal accountBalance;
+
+    // Regular double field without precision/scale
+    private Double loyaltyPoints;
+
+    @CreatedDate
     @Column(updatable = false)
     private LocalDateTime createdAt;
 
-    @Column
+    @LastModifiedDate
     private LocalDateTime updatedAt;
 
-    @Column
-    private boolean deleted = Boolean.FALSE;
+    @OneToMany(mappedBy = "customer", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private Set<Order> orders = new HashSet<>();
 
-    @PrePersist
-    protected void onCreate() {
-        createdAt = LocalDateTime.now();
+    public void addOrder(Order order) {
+        orders.add(order);
+        order.setCustomer(this);
     }
 
-    @PreUpdate
-    protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+    @Embeddable
+    @Getter
+    @Setter
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Address {
+        private String street;
+        private String city;
+        private String state;
+        private String postalCode;
+        private String country;
     }
 }
+
+
+
